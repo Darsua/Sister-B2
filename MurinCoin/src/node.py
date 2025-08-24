@@ -145,7 +145,6 @@ def mine():
         raise ValueError("No valid nonce found")
 
     def broadcast(block: MurinBlock, nonce: int, src: str = ""):
-        addresses = ['http://localhost:5000']  # TODO: PEER DISCOVERY
         for address in addresses:
             try:
                 print(f"[{src}] Broadcasting block {block.index} to {address}...")
@@ -194,6 +193,47 @@ def mine():
     }
     return jsonify(response), 200
 
+@app.route('/peer', methods=['GET'])
+def acknowledge():
+    answer = list(addresses)
+    
+    src = request.get_json().get('src', '')
+    if src and src not in addresses:
+        addresses.add(src)
+        print(f"[{pool.name}] New peer added: {src}")
+    
+    # DEBUG
+    # Write the final addresses to a file
+    with open(args.name + "/peers.txt", 'w') as f:
+        for address in addresses:
+            f.write(address + "\n")
+    
+    return jsonify(answer), 200
+
+def discover():
+    advertised = {'http://localhost:5000/'}
+    confirmed = set()
+    while advertised != confirmed:
+        for item in advertised - confirmed:
+            try:
+                print(f"[{pool.name}] Discovering peers via {item}...")
+                response = requests.get(f"{item}/peer", json={'src': f"http://localhost:{args.port}/"}) # I don't think we should use localhost here
+                if response.status_code == 200:
+                    confirmed.add(item)
+                    peers = response.json()
+                    advertised = advertised.union(set(peers))
+                    print(f"[{pool.name}] Got peers from {item}: {peers}")
+                    print(f"[{pool.name}] Advertised peers: {advertised}")
+                    print(f"[{pool.name}] Confirmed peers so far: {confirmed}") 
+                else:
+                    print(f"[{pool.name}] Failed to get peers from {item}: {response.text}")
+                    advertised.remove(item)
+            except requests.exceptions.RequestException as e:
+                print(f"[{pool.name}] Error discovering peers from {item}: {e}")
+                advertised.remove(item)
+    print(f"[{pool.name}] Peer discovery complete.")
+    return confirmed
+
 if __name__ == '__main__':
     import os
     import argparse
@@ -203,10 +243,18 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=5000, help='Port to run the node on')
     args = parser.parse_args()
     
-    os.system('clear')
     os.mkdir(args.name) if not os.path.exists(args.name) else print(f"[{args.name}] Directory already exists! Using existing data.")
 
     pool = JusticePool(args.name)
     chain = HoloChain(args.name)
+    
+    addresses = set()
+    addresses = set() if args.port == 5000 else discover()
+    
+    # DEBUG
+    # Write the final addresses to a file
+    with open(args.name + "/peers.txt", 'w') as f:
+        for address in addresses:
+            f.write(address + "\n")
     
     app.run(port=args.port)

@@ -1,4 +1,3 @@
 # TODO
-- Presence Broadcasting
-- Peer Discovery and Memory
+- Peer Timeout
 - Resynchronization via GET /chain (HARD)
