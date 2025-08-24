@@ -34,7 +34,29 @@ class MurinBlock:
                 f"    " + "\n    ".join(str(tx) for tx in self.data) + "\n"
                 f"  Previous Hash: {self.previous_hash}\n"
                 f"  Hash: {self.hash}")
-
+        
+    def pack(self) -> str:
+        return json.dumps({
+            "index": self.index,
+            "timestamp": self.timestamp,
+            "data": [tx.__dict__ for tx in self.data],
+            "previous_hash": self.previous_hash,
+            "hash": self.hash
+        })
+        
+    @staticmethod
+    def unpack(packed_block: str):
+        block_data = json.loads(packed_block)
+        transactions = [GigiTransaction(**tx) for tx in block_data['data']]
+        return MurinBlock(
+            index=block_data['index'],
+            timestamp=block_data['timestamp'],
+            data=transactions,
+            previous_hash=block_data['previous_hash'],
+            hash=block_data['hash']
+        )
+        
+    
 def gremlinEncoder(obj):
     if isinstance(obj, GigiTransaction):
         return {
@@ -53,13 +75,13 @@ def gremlinEncoder(obj):
     raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 class HoloChain:
-    def __init__(self, path):
-        self.path = path + "/chain.json"
+    def __init__(self, name):
+        self.name = name
         self.chain = self.load_chain()
     
     def load_chain(self):
         try:
-            with open(self.path, 'r') as f:
+            with open(self.name + "/chain.json", 'r') as f:
                 chain = json.load(f)
                 for i, block in enumerate(chain):
                     # Convert each block's transactions back to GigiTransaction objects
@@ -69,19 +91,19 @@ class HoloChain:
                     chain[i] = MurinBlock(**block)
                 return chain
         except FileNotFoundError:
-            print(f"Chain file {self.path} not found. Starting an empty chain.")
+            print(f"[{self.name}] Chain file not found. Starting with an empty chain.")
             return []
         except json.JSONDecodeError:
-            print(f"Error decoding JSON from {self.path}. Starting an empty chain.")
+            print(f"[{self.name}] Chain file is corrupted or empty. Starting with an empty chain.")
             return []
             
     def save_chain(self):
         try:
-            with open(self.path, 'w') as f:
+            with open(self.name + "/chain.json", 'w') as f:
                 json.dump(self.chain, f, default=gremlinEncoder, indent=2)
-            print(f"Chain saved to {self.path}.")
+            print(f"[{self.name}] Chain saved successfully.")
         except IOError as e:
-            print(f"Error saving chain to {self.path}: {e}")
+            print(f"[{self.name}] Error saving chain: {e}")
             
     def add_block(self, block: MurinBlock):
         if not isinstance(block, MurinBlock):
@@ -92,13 +114,13 @@ class HoloChain:
             raise ValueError("Block previous hash does not match the last block's hash")
         
         self.chain.append(block)
-        print(f"Block {block.index} added to the chain.")
+        print(f"[{self.name}] Block {block.index} added to the chain.")
             
     def get_length(self):
         return len(self.chain)
     
     def get_last_hash(self):
-        return self.chain[-1].hash if self.chain else ""
+        return self.chain[-1].hash if self.chain and self.get_length() > 0 else ""
         
     def __repr__(self):
         return f"JusticeChain(length={self.get_length()})"
