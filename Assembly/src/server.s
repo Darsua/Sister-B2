@@ -1,5 +1,7 @@
 .intel_syntax noprefix
 
+.extern post_timestamp
+
 # -----------------------------------------------------------
 .section .data
 # -----------------------------------------------------------
@@ -295,7 +297,21 @@ handle_post:
     call strcmp
     cmp rax, 0
     jne method_not_supported
+
+    # Post timestamp using external C function
+    call post_timestamp
+    cmp rax, 0
+    jl internal_server_error
     
+    # Respond with 200 OK
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, http_header
+    mov rdx, http_header_len
+    syscall ## write(client, http_header, http_header_len)
+    
+    # Close client connection
+    jmp close_client
     
     
 # --- HANDLE PUT REQUEST ---
