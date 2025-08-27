@@ -48,8 +48,11 @@ sockaddr:
 
 
 # --- HTTP RESPONSES ---
-http_header: .asciz "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
-http_header_len = . - http_header
+http_header_html: .asciz "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
+http_header_html_len = . - http_header_html
+
+http_header_download: .asciz "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment\r\n\r\n"
+http_header_download_len = . - http_header_download
 
 method_not_allowed_header: .asciz "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/html\r\n\r\n"
 method_not_allowed_header_len = . - method_not_allowed_header
@@ -317,6 +320,28 @@ handle_get:
     jl file_not_found
     mov r14, rax # Save file descriptor
 
+    # Check if file is HTML
+    lea rsi, path
+    call is_html
+    cmp rax, 1
+    je send_html_header
+
+    # Otherwise, send download header
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, http_header_download
+    mov rdx, http_header_download_len
+    syscall ## write(client, http_header_download, http_header_download_len)
+    jmp send_file
+
+send_html_header:
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, http_header_html
+    mov rdx, http_header_html_len
+    syscall ## write(client, http_header_html, http_header_html_len)
+    
+send_file:
     # Read file to buffer
     mov rax, SYS_read
     mov rdi, r14
@@ -324,30 +349,58 @@ handle_get:
     mov rdx, 1024
     syscall ## read(file_fd, buffer_send, 1024)
     mov r15, rax
-
-    # Write HTTP header
-    mov rax, SYS_write
-    mov rdi, client
-    lea rsi, http_header
-    mov rdx, http_header_len
-    syscall ## write(client, http_header, http_header_len)
-
+    
     # Write file content
     mov rax, SYS_write
     mov rdi, client
     lea rsi, buffer_send
     mov rdx, r15
     syscall ## write(client, buffer_send, bytes_read)
-
+    
     # Close file
     mov rax, SYS_close
     mov rdi, r14
     syscall ## close(file_fd)
-
+    
     # Close client connection
     jmp close_client
 
 
+# --- CHECK IF PATH IS HTML FILE ---
+is_html:
+    # rsi = path
+    mov rcx, 0
+find_end_html:
+    mov al, byte ptr [rsi + rcx]
+    test al, al
+    je check_html
+    inc rcx
+    jmp find_end_html
+check_html:
+    cmp rcx, 5
+    jl not_html
+    mov al, byte ptr [rsi + rcx - 5]
+    cmp al, '.'
+    jne not_html
+    mov al, byte ptr [rsi + rcx - 4]
+    cmp al, 'h'
+    jne not_html
+    mov al, byte ptr [rsi + rcx - 3]
+    cmp al, 't'
+    jne not_html
+    mov al, byte ptr [rsi + rcx - 2]
+    cmp al, 'm'
+    jne not_html
+    mov al, byte ptr [rsi + rcx - 1]
+    cmp al, 'l'
+    jne not_html
+    mov rax, 1
+    ret
+not_html:
+    xor rax, rax
+    ret
+
+    
 # --- HANDLE POST REQUEST ---
 handle_post:
     # Only support /submit path for POST
@@ -388,8 +441,8 @@ handle_post:
     # Respond with 200 OK
     mov rax, SYS_write
     mov rdi, client
-    lea rsi, http_header
-    mov rdx, http_header_len
+    lea rsi, http_header_html
+    mov rdx, http_header_html_len
     syscall ## write(client, http_header, http_header_len)
 
     # Close client connection
@@ -430,8 +483,8 @@ handle_put:
     # Respond with 200 OK
     mov rax, SYS_write
     mov rdi, client
-    lea rsi, http_header
-    mov rdx, http_header_len
+    lea rsi, http_header_html
+    mov rdx, http_header_html_len
     syscall ## write(client, http_header, http_header_len)
 
     # Close client connection
@@ -451,8 +504,8 @@ handle_delete:
     # Respond with 200 OK
     mov rax, SYS_write
     mov rdi, client
-    lea rsi, http_header
-    mov rdx, http_header_len
+    lea rsi, http_header_html
+    mov rdx, http_header_html_len
     syscall ## write(client, http_header, http_header_len)
 
     # Close client connection
