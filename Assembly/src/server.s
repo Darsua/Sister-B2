@@ -1,6 +1,6 @@
 .intel_syntax noprefix
 
-.extern post_timestamp
+.extern write_timestamp
 
 # -----------------------------------------------------------
 .section .data
@@ -59,6 +59,9 @@ file_not_found_header_len = . - file_not_found_header
 internal_server_error_header: .asciz "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\n\r\n"
 internal_server_error_header_len = . - internal_server_error_header
 
+bad_request_header: .asciz "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\n\r\n"
+bad_request_header_len = . - bad_request_header
+
 
 # --- HTTP METHODS ---
 method_get: .asciz "GET"
@@ -69,6 +72,8 @@ method_delete: .asciz "DELETE"
 
 # --- PATHS ---
 submit_path: .asciz "submit"
+posts_path: .asciz "posts.txt"
+
 
 # -----------------------------------------------------------
 .section .bss
@@ -100,7 +105,7 @@ signal_handler:
     xor rdi, rdi
     syscall ## exit(0)
 
-    
+
 # --- MAIN SERVER LOOP ---
 .global _start
 _start:
@@ -118,21 +123,21 @@ _start:
     xor rdx, rdx
     syscall ## socket(AF_INET, SOCK_STREAM, 0)
     mov socket, rax # Save socket fd
-    
+
     # Bind the socket
     mov rax, SYS_bind
     mov rdi, socket
     lea rsi, sockaddr
     mov rdx, 16 # sizeof(sockaddr)
     syscall ## bind(socket, &sockaddr, sizeof(sockaddr))
-    
+
     # Lee Sin
     mov rax, SYS_listen
     mov rdi, socket
     mov rsi, 5 # Backlog
     syscall ## listen(socket, 5)
 
-    
+
 # --- ACCEPT LOOP AS PARENT ---
 accept_loop:
     # Accept a connection
@@ -143,20 +148,20 @@ accept_loop:
     # sockaddr and socklen are the info of the client (we don't need them)
     syscall ## accept(socket, NULL, NULL)
     mov client, rax # Save client socket fd
-    
+
     # Fork process to handle client
     mov rax, SYS_fork
     syscall ## fork()
     cmp rax, 0 # Check if child process
     je handle_client ## If child, handle client
-    
+
     # Close client socket in parent
     mov rax, SYS_close
     mov rdi, client
     syscall ## close(client_socket)
     jmp accept_loop ## Back to accept loop
 
-    
+
 # --- CLIENT HANDLING FROM CHILD ---
 handle_client:
     # Read request from client
@@ -166,21 +171,21 @@ handle_client:
     mov rdx, 1024 # Number of bytes to read
     syscall ## read(client_socket, buffer, 1024)
     mov r15, rax # Number of bytes read from client
-    
+
     # Print the request to server console (stdout)
     mov rax, SYS_write
     mov rdi, 1 # stdout
     lea rsi, buffer_recv
     mov rdx, r15 # Number of bytes read from client
     syscall ## write(1, buffer, bytes_read)
-    
+
     # Parse the request to get method and path
     call parse_request
-    
+
     # Handle based on method
-    jmp handle_method 
-    
-    
+    jmp handle_method
+
+
 # --- PARSE THE REQUEST ---
 parse_request:
     lea rsi, buffer_recv
@@ -212,39 +217,88 @@ copy_path:
 path_done:
     mov byte ptr [rdi + rcx], 0 # Null-terminate path string
     ret
-    
-    
+
+
 # --- ROUTE BASED ON METHOD ---
 handle_method:
-    lea rsi, method
-
     # If "GET"
+    lea rsi, method
     lea rdi, method_get
     call strcmp
     cmp rax, 0
     je handle_get
-    
+
     # Else if "POST"
+    lea rsi, method
     lea rdi, method_post
     call strcmp
     cmp rax, 0
     je handle_post
-    
+
     # Else if "PUT"
+    lea rsi, method
     lea rdi, method_put
     call strcmp
     cmp rax, 0
     je handle_put
-    
+
     # Else if "DELETE"
+    lea rsi, method
     lea rdi, method_delete
     call strcmp
     cmp rax, 0
     je handle_delete
-    
+
     # Else, method not supported
     jmp method_not_supported
-    
+
+# --- PARSE REQUEST BODY ---
+read_body:
+    # Body starts after double CRLF (0x0D 0x0A 0x0D 0x0A)
+    lea rsi, buffer_recv
+    mov rcx, 0
+    mov rdx, r15 # Total bytes read
+    mov rbx, 0 # Body start index
+find_body:
+    cmp rcx, rdx
+    jge body_not_found
+    mov al, byte ptr [rsi + rcx]
+    cmp al, 0x0D # CR
+    jne not_crlfcrlf
+    mov al, byte ptr [rsi + rcx + 1]
+    cmp al, 0x0A # LF
+    jne not_crlfcrlf
+    mov al, byte ptr [rsi + rcx + 2]
+    cmp al, 0x0D # CR
+    jne not_crlfcrlf
+    mov al, byte ptr [rsi + rcx + 3]
+    cmp al, 0x0A # LF
+    jne not_crlfcrlf
+    add rcx, 4
+    mov rbx, rcx # Body starts here
+    jmp body_found
+not_crlfcrlf: # Not CRLFCRLF, continue searching
+    inc rcx
+    jmp find_body
+body_found:
+    lea rbx, [buffer_recv + rbx] # Body start address
+    # Calculate body length
+    lea rax, [buffer_recv + r15]
+    sub rax, rbx
+    mov r15, rax # Body length in r15
+
+    # Print body to stdout
+    mov rax, SYS_write
+    mov rdi, 1 # stdout
+    mov rsi, rbx # Body start address
+    mov rdx, r15 # Body length
+    syscall ## write(1, body, body_length)
+
+    xor rax, rax # Success
+    ret
+body_not_found:
+    mov rax, -1 # Failure
+    ret
 
 # --- HANDLE GET REQUEST ---
 handle_get:
@@ -279,15 +333,15 @@ handle_get:
     lea rsi, buffer_send
     mov rdx, r15
     syscall ## write(client, buffer_send, bytes_read)
-    
+
     # Close file
     mov rax, SYS_close
     mov rdi, r14
     syscall ## close(file_fd)
-    
+
     # Close client connection
     jmp close_client
-        
+
 
 # --- HANDLE POST REQUEST ---
 handle_post:
@@ -298,33 +352,93 @@ handle_post:
     cmp rax, 0
     jne method_not_supported
 
-    # Post timestamp using external C function
-    call post_timestamp
+    # Open the file to append
+    mov rax, SYS_open
+    lea rdi, posts_path
+    mov rsi, 1089 # O_WRONLY | O_CREAT | O_APPEND
+    mov rdx, 0644 # Permissions
+    syscall ## open(full_path, O_WRONLY | O_CREAT | O_APPEND, 0644)
+    mov r14, rax # Save file descriptor
+
+    # Get the body of the request
+    call read_body
+    cmp rax, 0
+    jne bad_request
+
+    # Write body to file
+    mov rax, SYS_write
+    mov rdi, r14
+    mov rsi, rbx # Body start address
+    mov rdx, r15 # Body length
+    syscall ## write(file_fd, body, body_length)
     cmp rax, 0
     jl internal_server_error
-    
+
+    # Write timestamp using external C function
+    mov rdi, r14 # File descriptor
+    call write_timestamp
+    cmp rax, 0
+    jl internal_server_error
+
     # Respond with 200 OK
     mov rax, SYS_write
     mov rdi, client
     lea rsi, http_header
     mov rdx, http_header_len
     syscall ## write(client, http_header, http_header_len)
-    
+
     # Close client connection
     jmp close_client
-    
-    
+
+
 # --- HANDLE PUT REQUEST ---
 handle_put:
-    # For simplicity, just respond with 405 Method Not Allowed
-    jmp method_not_supported
+    # Open file to write
+    mov rax, SYS_open
+    lea rdi, path
+    mov rsi, 577 # O_WRONLY | O_CREAT | O_TRUNC
+    mov rdx, 0644 # Permissions
+    syscall ## open(full_path, O_WRONLY | O_CREAT | O_TRUNC, 0644)
+    cmp rax, 0
+    jl internal_server_error
+    mov r14, rax # Save file descriptor
+
+    # Get the body of the request
+    call read_body
+    cmp rax, 0
+    jne bad_request
     
+    # Write body to file
+    mov rax, SYS_write
+    mov rdi, r14
+    mov rsi, rbx # Body start address
+    mov rdx, r15 # Body length
+    syscall ## write(file_fd, body, body_length)
+    cmp rax, 0
+    jl internal_server_error
+
+    # Close file
+    mov rax, SYS_close
+    mov rdi, r14
+    syscall ## close(file_fd)
+
+    # Respond with 200 OK
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, http_header
+    mov rdx, http_header_len
+    syscall ## write(client, http_header, http_header_len)
+
+    # Close client connection
+    jmp close_client
+
+
 # --- HANDLE DELETE REQUEST ---
 handle_delete:
     # For simplicity, just respond with 405 Method Not Allowed
     jmp method_not_supported
-    
-    
+
+
 # --- RESPONSE HANDLERS ---
 method_not_supported:
     # 405 Method Not Allowed
@@ -343,7 +457,7 @@ file_not_found:
     mov rdx, file_not_found_header_len
     syscall ## write(client, file_not_found_header, file_not_found_header_len)
     jmp close_client
-    
+
 internal_server_error:
     # 500 Internal Server Error
     mov rax, SYS_write
@@ -353,6 +467,15 @@ internal_server_error:
     syscall ## write(client, internal_server_error_header, internal_server_error_header_len)
     jmp close_client
 
+bad_request:
+    # 400 Bad Request
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, bad_request_header
+    mov rdx, bad_request_header_len
+    syscall ## write(client, bad_request_header, bad_request_header_len)
+    jmp close_client
+    
     
 # --- CLOSE CLIENT AND EXIT CHILD ---
 close_client:
@@ -360,38 +483,38 @@ close_client:
     mov rax, SYS_close
     mov rdi, client
     syscall ## close(client_socket)
-    
+
     # Exit child process
     mov rax, SYS_exit
     xor rdi, rdi
     syscall ## exit(0)
-    
-    
+
+
 # --- STRING COMPARE ---
 strcmp:
     # Arguments: rdi = str1, rsi = str2
     # Return: rax = 0 if equal, <0 if str1 < str2, >0 if str1 > str2
     xor rax, rax
-    
+
 loop:
     mov al, byte ptr [rdi]
     mov bl, byte ptr [rsi]
-    
+
     cmp al, bl
     jne diff
-    
+
     test al, al
     je equal
-    
+
     inc rdi
     inc rsi
     jmp loop
-    
+
 diff:
-    sub rax, rbx
+    sub al, bl
+    movsx rax, al
     ret
-    
+
 equal:
     xor rax, rax
     ret
-    
