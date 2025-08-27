@@ -13,6 +13,8 @@ SYS_read = 0
 SYS_write = 1
 SYS_open = 2
 SYS_close = 3
+
+SYS_fork = 57
 SYS_exit = 60
 
 # Socket constants
@@ -24,12 +26,16 @@ sockaddr:
     .word AF_INET
     .byte 0x1b, 0x39 # Port (6969)
     .byte 0, 0, 0, 0 # IP
-    .quad 0
+    .zero 8 # Padding to make it 16 bytes
     
 # Web constants
 path: .asciz "res/index.html"
 http_header: .asciz "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 http_header_len = . - http_header
+
+# Debug messages
+forked_msg: .asciz "Forked\n"
+forked_msg_len = . - forked_msg
 
 # -----------------------------------------------------------
 
@@ -74,6 +80,28 @@ accept_loop:
     # sockaddr and socklen are the info of the client (we don't need them)
     syscall ## accept(socket, NULL, NULL)
     mov client, rax # Save client socket fd
+    
+    # Fork process to handle client
+    mov rax, SYS_fork
+    syscall ## fork()
+    cmp rax, 0
+    je handle_client
+    # Child process handles the client
+    
+    # Close client socket in parent
+    mov rax, SYS_close
+    mov rdi, client # Client socket fd
+    syscall ## close(client_socket)
+    jmp accept_loop
+
+handle_client:
+
+    # DEBUG: PRINT FORKED
+    mov rax, SYS_write
+    mov rdi, 1 # stdout
+    lea rsi, forked_msg
+    mov rdx, forked_msg_len
+    syscall ## write(1, "Forked\n", 7)
     
     # Read request from client
     mov rax, SYS_read
@@ -123,9 +151,7 @@ accept_loop:
     mov rdi, client # Client socket fd
     syscall ## close(client_socket)
     
-    jmp accept_loop
-    
-    # Exit the program
+    # Child process exits
     mov rax, SYS_exit
-    xor rdi, rdi # Exit code 0
+    xor rdi, rdi
     syscall ## exit(0)
