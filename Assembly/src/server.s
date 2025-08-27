@@ -19,6 +19,7 @@ SYS_close = 3
 
 SYS_fork = 57
 SYS_exit = 60
+SYS_unlink = 87
 SYS_rt_sigaction = 13
 
 
@@ -73,6 +74,10 @@ method_delete: .asciz "DELETE"
 # --- PATHS ---
 submit_path: .asciz "submit"
 posts_path: .asciz "posts.txt"
+
+
+# --- EXTRA ---
+space: .asciz "\n\n"
 
 
 # -----------------------------------------------------------
@@ -178,6 +183,13 @@ handle_client:
     lea rsi, buffer_recv
     mov rdx, r15 # Number of bytes read from client
     syscall ## write(1, buffer, bytes_read)
+    
+    # Add spacing for readability
+    mov rax, SYS_write
+    mov rdi, 1 # stdout
+    lea rsi, space
+    mov rdx, 2
+    syscall ## write(1, "\n\n", 2)
 
     # Parse the request to get method and path
     call parse_request
@@ -286,13 +298,6 @@ body_found:
     lea rax, [buffer_recv + r15]
     sub rax, rbx
     mov r15, rax # Body length in r15
-
-    # Print body to stdout
-    mov rax, SYS_write
-    mov rdi, 1 # stdout
-    mov rsi, rbx # Body start address
-    mov rdx, r15 # Body length
-    syscall ## write(1, body, body_length)
 
     xor rax, rax # Success
     ret
@@ -435,8 +440,23 @@ handle_put:
 
 # --- HANDLE DELETE REQUEST ---
 handle_delete:
-    # For simplicity, just respond with 405 Method Not Allowed
-    jmp method_not_supported
+    # Let any delete request (yeah super insecure)
+    # Open the file to delete (path is already parsed)
+    mov rax, SYS_unlink
+    lea rdi, path
+    syscall ## unlink(path)
+    cmp rax, 0
+    jl internal_server_error
+
+    # Respond with 200 OK
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, http_header
+    mov rdx, http_header_len
+    syscall ## write(client, http_header, http_header_len)
+
+    # Close client connection
+    jmp close_client
 
 
 # --- RESPONSE HANDLERS ---
