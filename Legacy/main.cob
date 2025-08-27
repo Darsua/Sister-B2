@@ -44,8 +44,18 @@
        77 BALANCE-TEXT          PIC X(20).
 
        77 BALANCE-ALPHA         PIC X(15).
+       
+       77 ARGUMENT        PIC X(20).
+       77 EOF             PIC X VALUE "N".
 
        PROCEDURE DIVISION.
+           ACCEPT ARGUMENT FROM COMMAND-LINE
+           IF ARGUMENT = "--apply-interest"
+               PERFORM APPLY-INTEREST
+               STOP RUN
+           END-IF
+           PERFORM MAIN
+           STOP RUN.
 
        MAIN.
            PERFORM READ-INPUT
@@ -142,3 +152,27 @@
            WRITE OUT-RECORD
            CLOSE OUT-FILE.
 
+       APPLY-INTEREST.
+           OPEN INPUT ACC-FILE
+           OPEN OUTPUT TMP-FILE
+           PERFORM UNTIL EOF = "Y"
+               READ ACC-FILE
+                   AT END
+                       MOVE "Y" TO EOF
+                   NOT AT END
+                       MOVE ACC-RECORD-RAW(1:6) TO ACC-ACCOUNT
+                       MOVE ACC-RECORD-RAW(7:3) TO ACC-ACTION
+                       MOVE FUNCTION NUMVAL(ACC-RECORD-RAW(10:9))
+                           TO ACC-BALANCE
+                       COMPUTE ACC-BALANCE = ACC-BALANCE * 1.05
+                       MOVE ACC-ACCOUNT TO TMP-RECORD(1:6)
+                       MOVE ACC-ACTION TO TMP-RECORD(7:3)
+                       MOVE ACC-BALANCE TO FORMATTED-AMOUNT
+                       MOVE FORMATTED-AMOUNT TO TMP-RECORD(10:9)
+                       WRITE TMP-RECORD
+               END-READ
+           END-PERFORM
+           CLOSE ACC-FILE
+           CLOSE TMP-FILE
+           DISPLAY "Applied 5% interest to all accounts."
+           CALL "SYSTEM" USING "mv temp.txt accounts.txt".
