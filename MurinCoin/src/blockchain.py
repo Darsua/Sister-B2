@@ -116,14 +116,14 @@ class HoloChain:
         self.chain.append(block)
         print(f"[{self.name}] Block {block.index} added to the chain.")
             
+    def get_last_hash(self):
+        return self.chain[-1].hash if self.chain and len(self.chain) > 0 else ""
+        
     def get_length(self):
         return len(self.chain)
-    
-    def get_last_hash(self):
-        return self.chain[-1].hash if self.chain and self.get_length() > 0 else ""
         
     def __repr__(self):
-        return f"JusticeChain(length={self.get_length()})"
+        return f"JusticeChain(length={len(self.chain)})"
         
     def __str__(self):
         return "\n".join(str(block) for block in self.chain)

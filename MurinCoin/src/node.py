@@ -105,8 +105,9 @@ def add_block():
     if block.index < chain.get_length():
         return 'Block is part of a chain with a shorter or equivalent length', 400
     elif block.index > chain.get_length():
-        # TODO: Perform GET /chain to the whole network to get the latest chain
-        return 'Block is part of a chain with a longer length', 400
+        print(f"[{pool.name}] Block index {block.index} is ahead of current chain length {chain.get_length()}. Initiating resync...")
+        sync()
+        return 'Block is part of a chain with a longer length. Target node will attempt resync', 400
     # else block is the next block in the chain
     
     # Check the previous hash
@@ -211,7 +212,7 @@ def acknowledge():
     return jsonify(answer), 200
 
 def discover():
-    advertised = {'http://localhost:5000/'}
+    advertised = {'http://localhost:5000/'} # Assume node at 5000 is always up
     confirmed = set()
     while advertised != confirmed:
         for item in advertised - confirmed:
@@ -234,6 +235,38 @@ def discover():
     print(f"[{pool.name}] Peer discovery complete.")
     return confirmed
 
+@app.route('/chain', methods=['GET'])
+def give_chain():
+    response = {
+        'chain': [block.pack() for block in chain.chain],
+        'length': chain.get_length()
+    }
+    return jsonify(response), 200
+    
+def sync():
+    longest_chain = chain.chain
+    for address in addresses:
+        try:
+            print(f"[{pool.name}] Resyncing chain from {address}...")
+            response = requests.get(f"{address}/chain")
+            if response.status_code == 200:
+                data = response.json()
+                remote_chain = [MurinBlock.unpack(b) for b in data['chain']]
+                if len(remote_chain) > len(longest_chain):
+                    longest_chain = remote_chain
+                    print(f"[{pool.name}] Found a longer chain at {address}.")
+            else:
+                print(f"[{pool.name}] Failed to get chain from {address}: {response.text}")
+        except requests.exceptions.RequestException as e:
+            print(f"[{pool.name}] Error resyncing chain from {address}: {e}")
+    
+    if longest_chain != chain.chain:
+        chain.chain = longest_chain
+        chain.save_chain()
+        print(f"[{pool.name}] Chain resynced to the longest chain.")
+    else:
+        print(f"[{pool.name}] Current chain is already the longest.")
+
 if __name__ == '__main__':
     import os
     import argparse
@@ -241,6 +274,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='MurinCoin Node')
     parser.add_argument('--name', type=str, help='Name of the node directory', required=True)
     parser.add_argument('--port', type=int, default=5000, help='Port to run the node on')
+    parser.add_argument('--no-sync', action='store_true', help='Disable automatic chain synchronization on startup')
     args = parser.parse_args()
     
     os.mkdir(args.name) if not os.path.exists(args.name) else print(f"[{args.name}] Directory already exists! Using existing data.")
@@ -250,6 +284,8 @@ if __name__ == '__main__':
     
     addresses = set()
     addresses = set() if args.port == 5000 else discover()
+    if not args.no_sync:
+        sync()
     
     # DEBUG
     # Write the final addresses to a file

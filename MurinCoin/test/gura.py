@@ -1,29 +1,23 @@
+### Transaction upload, mining, and block synchronization test script
+
 from request import post_request, get_request
 import subprocess
 import time
-import os
+from setup import setup
 
-# Remove existing files to start fresh (I'm sorry)
-if os.path.exists("advent/chain.json"):
-    os.remove("advent/chain.json")
-if os.path.exists("myth/chain.json"):
-    os.remove("myth/chain.json")
-if os.path.exists("advent/pool.json"):
-    os.remove("advent/pool.json")
-if os.path.exists("myth/pool.json"):
-    os.remove("myth/pool.json")
-if os.path.exists("advent"):
-    os.rmdir("advent")
-if os.path.exists("myth"):
-    os.rmdir("myth")
+setup()
 
-
-# Start both nodes concurrently
-processes = [
-    subprocess.Popen(['python', 'src/node.py', '--name', 'advent', '--port', '5000']),
-    subprocess.Popen(['python', 'src/node.py', '--name', 'myth', '--port', '5001'])
+processes = []
+node_configs = [
+    ('advent', '5000'),
+    ('council', '5001'),
+    ('justice', '5002'),
+    ('myth', '5003')
 ]
-time.sleep(1)
+
+for name, port in node_configs:
+    processes.append(subprocess.Popen(['python', 'src/node.py', '--name', name, '--port', port]))
+    time.sleep(1)  # Wait 1 second before starting the next node
 
 print("\n--- POST GIGI --> CC TRANSACTION ---")
 data = {
@@ -41,7 +35,7 @@ data = {
 }
 post_request("http://localhost:5001/transaction", data)
 
-print("\n--- MINE AT MYTH AND BROADCAST TO ADVENT ---")
+print("\n--- MINE AT COUNCIL AND BROADCAST TO OTHERS ---")
 response = get_request("http://localhost:5001/mine")
 
 # Stop the nodes
