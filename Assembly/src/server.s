@@ -16,6 +16,18 @@ SYS_close = 3
 
 SYS_fork = 57
 SYS_exit = 60
+SYS_rt_sigaction = 13
+
+
+# -- Signal constants --
+SIGINT = 2
+.align 8
+sigaction:
+    .quad signal_handler
+    .quad 0
+    .quad 0, 0
+    .zero 128
+
 
 # -- Socket constants --
 AF_INET=2
@@ -27,7 +39,8 @@ sockaddr:
     .byte 0x1e, 0x61 # Port (7777)
     .byte 0, 0, 0, 0 # IP
     .zero 8 # Padding to make it 16 bytes
-    
+
+
 # -- Headers --
 http_header: .asciz "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 http_header_len = . - http_header
@@ -56,9 +69,28 @@ full_path: .space 260 # Buffer for storing full file path
 # -----------------------------------------------------------
 .section .text
 
+# -- Signal handler for graceful shutdown --
+signal_handler:
+    # Close the server socket
+    mov rax, SYS_close
+    mov rdi, socket
+    syscall ## close(socket)
+
+    # Exit the process
+    mov rax, SYS_exit
+    xor rdi, rdi
+    syscall ## exit(0)
+
 # -- Create server socket and listen for connections --
 .global _start
 _start:
+    # Set up signal handler for SIGINT
+    mov rax, SYS_rt_sigaction
+    mov rdi, SIGINT
+    lea rsi, sigaction
+    xor rdx, rdx
+    syscall ## rt_sigaction(SIGINT, &sigaction, NULL, 8)
+
     # Create socket
     mov rax, SYS_socket
     mov rdi, AF_INET
@@ -129,19 +161,19 @@ parse_method:
     lea rsi, buffer_recv
     mov eax, [rsi] # Load first 4 bytes
 
-    cmp eax, 0x20544547 # "GET " in little-endian
+    cmp eax, 0x20544547 # "GET "
     je handle_get
 
-    cmp eax, 0x54534F50   # "POST" in little-endian
+    cmp eax, 0x54534F50 # "POST"
     je handle_post
     
-    cmp eax, 0x20545550   # "PUT " in little-endian
+    cmp eax, 0x20545550 # "PUT "
     je handle_put
     
-    cmp eax, 0x454C4544   # "DELE" in little-endian
+    cmp eax, 0x454C4544 # "DELE"
     jne method_not_supported
     mov ebx, [rsi+4]
-    cmp ebx, 0x20204554   # "TE  " in little-endian
+    cmp ebx, 0x20204554 # "TE  "
     je handle_delete
 
     
@@ -261,29 +293,31 @@ handle_get:
 handle_post:
     lea rsi, buffer_recv
     call parse_path
-    # Continue with POST logic
 
 # -- PUT --
 handle_put:
     lea rsi, buffer_recv
     call parse_path
     # Continue with PUT logic
-
+    
+    jmp close_client
     
 # -- DELETE --
 handle_delete:
     lea rsi, buffer_recv
     call parse_path
     # Continue with DELETE logic
+    
+    jmp close_client
 
 # -- Finish client request --    
 close_client:
     # Close client socket
     mov rax, SYS_close
     mov rdi, client
-    syscall
+    syscall ## close(client_socket)
     
     # Exit child process
     mov rax, SYS_exit
     xor rdi, rdi
-    syscall
+    syscall ## exit(0)
