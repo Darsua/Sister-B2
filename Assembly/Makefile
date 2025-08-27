@@ -3,7 +3,7 @@ BIN_DIR = bin
 BIN = $(BIN_DIR)/server
 
 ASM = as
-ASM_FLAGS = --64
+ASM_FLAGS =
 
 LD = ld
 LD_FLAGS =
