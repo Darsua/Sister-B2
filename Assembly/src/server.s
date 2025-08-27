@@ -2,8 +2,9 @@
 
 # -----------------------------------------------------------
 .section .data
+# -----------------------------------------------------------
 
-# -- System call numbers --
+# --- SYSTEM CALLS ---
 SYS_socket = 41
 SYS_bind = 49
 SYS_listen = 50
@@ -19,8 +20,10 @@ SYS_exit = 60
 SYS_rt_sigaction = 13
 
 
-# -- Signal constants --
+# --- SIGNALS ---
 SIGINT = 2
+
+# Signal action struct
 .align 8
 sigaction:
     .quad signal_handler
@@ -29,11 +32,11 @@ sigaction:
     .zero 128
 
 
-# -- Socket constants --
+# --- SOCKET ---
 AF_INET=2
 SOCK_STREAM=1
 
-# Sockaddr struct
+# Socket address struct
 sockaddr:
     .word AF_INET
     .byte 0x1e, 0x61 # Port (7777)
@@ -41,7 +44,7 @@ sockaddr:
     .zero 8 # Padding to make it 16 bytes
 
 
-# -- Headers --
+# --- HTTP RESPONSES ---
 http_header: .asciz "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
 http_header_len = . - http_header
 
@@ -55,21 +58,35 @@ internal_server_error_header: .asciz "HTTP/1.1 500 Internal Server Error\r\nCont
 internal_server_error_header_len = . - internal_server_error_header
 
 
+# --- HTTP METHODS ---
+method_get: .asciz "GET"
+method_post: .asciz "POST"
+method_put: .asciz "PUT"
+method_delete: .asciz "DELETE"
+
+
+# --- PATHS ---
+submit_path: .asciz "submit"
+
 # -----------------------------------------------------------
 .section .bss
+# -----------------------------------------------------------
 
 socket: .quad 0 # Host socket file descriptor
 client: .quad 0 # Client socket file descriptor
+
 buffer_recv: .space 1024 # Buffer for reading requests
 buffer_send: .space 1024 # Buffer for sending responses
-request_path: .space 256 # Buffer for storing the requested path
-full_path: .space 260 # Buffer for storing full file path
+
+method: .space 8 # Buffer for storing the request method
+path: .space 256 # Buffer for storing the requested path
 
 
 # -----------------------------------------------------------
 .section .text
+# -----------------------------------------------------------
 
-# -- Signal handler for graceful shutdown --
+# --- SIGNAL HANDLER FOR SHUTDOWN ---
 signal_handler:
     # Close the server socket
     mov rax, SYS_close
@@ -81,7 +98,8 @@ signal_handler:
     xor rdi, rdi
     syscall ## exit(0)
 
-# -- Create server socket and listen for connections --
+    
+# --- MAIN SERVER LOOP ---
 .global _start
 _start:
     # Set up signal handler for SIGINT
@@ -91,7 +109,7 @@ _start:
     xor rdx, rdx
     syscall ## rt_sigaction(SIGINT, &sigaction, NULL, 8)
 
-    # Create socket
+    # Create a socket
     mov rax, SYS_socket
     mov rdi, AF_INET
     mov rsi, SOCK_STREAM
@@ -99,25 +117,25 @@ _start:
     syscall ## socket(AF_INET, SOCK_STREAM, 0)
     mov socket, rax # Save socket fd
     
-    # Bind socket
+    # Bind the socket
     mov rax, SYS_bind
-    mov rdi, socket # Socket fd
-    lea rsi, sockaddr # &sockaddr
+    mov rdi, socket
+    lea rsi, sockaddr
     mov rdx, 16 # sizeof(sockaddr)
     syscall ## bind(socket, &sockaddr, sizeof(sockaddr))
     
     # Lee Sin
     mov rax, SYS_listen
-    mov rdi, socket # Socket fd
+    mov rdi, socket
     mov rsi, 5 # Backlog
     syscall ## listen(socket, 5)
 
     
-# -- Loop to accept and handle connections --
+# --- ACCEPT LOOP AS PARENT ---
 accept_loop:
-    # Accept connection
+    # Accept a connection
     mov rax, SYS_accept
-    mov rdi, socket # Socket fd
+    mov rdi, socket
     xor rsi, rsi # NULL sockaddr
     xor rdx, rdx # NULL socklen
     # sockaddr and socklen are the info of the client (we don't need them)
@@ -127,26 +145,25 @@ accept_loop:
     # Fork process to handle client
     mov rax, SYS_fork
     syscall ## fork()
-    cmp rax, 0
-    je handle_client
-    # Child process handles the client
+    cmp rax, 0 # Check if child process
+    je handle_client ## If child, handle client
     
     # Close client socket in parent
     mov rax, SYS_close
-    mov rdi, client # Client socket fd
+    mov rdi, client
     syscall ## close(client_socket)
-    jmp accept_loop
+    jmp accept_loop ## Back to accept loop
 
     
-# -- Handle client request in child process --
+# --- CLIENT HANDLING FROM CHILD ---
 handle_client:
     # Read request from client
     mov rax, SYS_read
-    mov rdi, client # Client socket fd
-    lea rsi, buffer_recv # Buffer to read into
+    mov rdi, client
+    lea rsi, buffer_recv
     mov rdx, 1024 # Number of bytes to read
     syscall ## read(client_socket, buffer, 1024)
-    mov r15, rax # Save number of bytes read
+    mov r15, rax # Number of bytes read from client
     
     # Print the request to server console (stdout)
     mov rax, SYS_write
@@ -154,113 +171,92 @@ handle_client:
     lea rsi, buffer_recv
     mov rdx, r15 # Number of bytes read from client
     syscall ## write(1, buffer, bytes_read)
-
     
-# -- Parse HTTP method --
-parse_method:
+    # Parse the request to get method and path
+    call parse_request
+    
+    # Handle based on method
+    jmp handle_method 
+    
+    
+# --- PARSE THE REQUEST ---
+parse_request:
     lea rsi, buffer_recv
-    mov eax, [rsi] # Load first 4 bytes
+    lea rdi, method
+    mov rcx, 0
 
-    cmp eax, 0x20544547 # "GET "
-    je handle_get
-
-    cmp eax, 0x54534F50 # "POST"
-    je handle_post
-    
-    cmp eax, 0x20545550 # "PUT "
-    je handle_put
-    
-    cmp eax, 0x454C4544 # "DELE"
-    jne method_not_supported
-    mov ebx, [rsi+4]
-    cmp ebx, 0x20204554 # "TE  "
-    je handle_delete
-
-    
-# -- Parse request path --
-parse_path: # rsi should point to buffer_recv before calling
-    mov rcx, 4 # Start after method and space
-    lea rdi, request_path
-
-parse_path_loop:
-    mov al, [rsi + rcx]
-    cmp al, ' ' # End of path
-    je path_done
-    mov [rdi], al
-    inc rdi
+copy_method:
+    mov al, byte ptr [rsi + rcx]
+    cmp al, ' '
+    je method_done
+    mov byte ptr [rdi + rcx], al
     inc rcx
-    jmp parse_path_loop
+    jmp copy_method
 
-path_done:
-    mov BYTE PTR [rdi], 0 # Null-terminate
-
-    # Build full path: "res/" + request_path (skip leading '/')
-    lea rsi, full_path
-    mov BYTE PTR [rsi+0], 'r'
-    mov BYTE PTR [rsi+1], 'e'
-    mov BYTE PTR [rsi+2], 's'
-    mov BYTE PTR [rsi+3], '/'
-    lea rdi, request_path
+method_done:
+    mov byte ptr [rdi + rcx], 0 # Null-terminate method string
+    lea rsi, [buffer_recv + rcx + 2] # Move past space and '/'
+    lea rdi, path
     mov rcx, 0
 
 copy_path:
-    mov al, [rdi+rcx+1] # Skip leading '/'
-    mov [rsi+4+rcx], al
-    cmp al, 0
-    je path_built
+    mov al, byte ptr [rsi + rcx]
+    cmp al, ' '
+    je path_done
+    mov byte ptr [rdi + rcx], al
     inc rcx
     jmp copy_path
 
-path_built:
+path_done:
+    mov byte ptr [rdi + rcx], 0 # Null-terminate path string
     ret
+    
+    
+# --- ROUTE BASED ON METHOD ---
+handle_method:
+    lea rsi, method
 
+    # If "GET"
+    lea rdi, method_get
+    call strcmp
+    cmp rax, 0
+    je handle_get
     
-# -- Header response handler --
-method_not_supported:
-    # Send 405 Method Not Allowed
-    mov rax, SYS_write
-    mov rdi, client
-    lea rsi, method_not_allowed_header
-    mov rdx, method_not_allowed_header_len
-    syscall ## write(client, method_not_allowed_header, method_not_allowed_header_len)
-    jmp close_client
+    # Else if "POST"
+    lea rdi, method_post
+    call strcmp
+    cmp rax, 0
+    je handle_post
+    
+    # Else if "PUT"
+    lea rdi, method_put
+    call strcmp
+    cmp rax, 0
+    je handle_put
+    
+    # Else if "DELETE"
+    lea rdi, method_delete
+    call strcmp
+    cmp rax, 0
+    je handle_delete
+    
+    # Else, method not supported
+    jmp method_not_supported
+    
 
-file_not_found:
-    # Send 404 Not Found
-    mov rax, SYS_write
-    mov rdi, client
-    lea rsi, file_not_found_header
-    mov rdx, file_not_found_header_len
-    syscall ## write(client, file_not_found_header, file_not_found_header_len)
-    jmp close_client
-    
-internal_server_error:
-    # Send 500 Internal Server Error
-    mov rax, SYS_write
-    mov rdi, client
-    lea rsi, internal_server_error_header
-    mov rdx, internal_server_error_header_len
-    syscall ## write(client, internal_server_error_header, internal_server_error_header_len)
-    jmp close_client
-    
-    
-# --- MEHTHOD HANDLERS ---
-# -- GET --
+# --- HANDLE GET REQUEST ---
 handle_get:
-    lea rsi, buffer_recv
-    call parse_path
-
-    # Open file for reading
+    # Open file to read
     mov rax, SYS_open
-    lea rdi, full_path
+    lea rdi, path
     xor rsi, rsi # O_RDONLY
     xor rdx, rdx
     syscall ## open(full_path, O_RDONLY)
     cmp rax, 0
     jl file_not_found
-    mov r14, rax
+    mov r14, rax # Save file descriptor
 
-    # Read file
+    # Read file to buffer
     mov rax, SYS_read
     mov rdi, r14
     lea rsi, buffer_send
@@ -286,31 +282,63 @@ handle_get:
     mov rax, SYS_close
     mov rdi, r14
     syscall ## close(file_fd)
-    jmp close_client
-
     
-# -- POST --
+    # Close client connection
+    jmp close_client
+        
+
+# --- HANDLE POST REQUEST ---
 handle_post:
-    lea rsi, buffer_recv
-    call parse_path
-
-# -- PUT --
+    # Only support /submit path for POST
+    lea rsi, path
+    lea rdi, submit_path
+    call strcmp
+    cmp rax, 0
+    jne method_not_supported
+    
+    
+    
+# --- HANDLE PUT REQUEST ---
 handle_put:
-    lea rsi, buffer_recv
-    call parse_path
-    # Continue with PUT logic
+    # For simplicity, just respond with 405 Method Not Allowed
+    jmp method_not_supported
     
-    jmp close_client
-    
-# -- DELETE --
+# --- HANDLE DELETE REQUEST ---
 handle_delete:
-    lea rsi, buffer_recv
-    call parse_path
-    # Continue with DELETE logic
+    # For simplicity, just respond with 405 Method Not Allowed
+    jmp method_not_supported
     
+    
+# --- RESPONSE HANDLERS ---
+method_not_supported:
+    # 405 Method Not Allowed
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, method_not_allowed_header
+    mov rdx, method_not_allowed_header_len
+    syscall ## write(client, method_not_allowed_header, method_not_allowed_header_len)
     jmp close_client
 
-# -- Finish client request --    
+file_not_found:
+    # 404 Not Found
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, file_not_found_header
+    mov rdx, file_not_found_header_len
+    syscall ## write(client, file_not_found_header, file_not_found_header_len)
+    jmp close_client
+    
+internal_server_error:
+    # 500 Internal Server Error
+    mov rax, SYS_write
+    mov rdi, client
+    lea rsi, internal_server_error_header
+    mov rdx, internal_server_error_header_len
+    syscall ## write(client, internal_server_error_header, internal_server_error_header_len)
+    jmp close_client
+
+    
+# --- CLOSE CLIENT AND EXIT CHILD ---
 close_client:
     # Close client socket
     mov rax, SYS_close
@@ -321,3 +349,33 @@ close_client:
     mov rax, SYS_exit
     xor rdi, rdi
     syscall ## exit(0)
+    
+    
+# --- STRING COMPARE ---
+strcmp:
+    # Arguments: rdi = str1, rsi = str2
+    # Return: rax = 0 if equal, <0 if str1 < str2, >0 if str1 > str2
+    xor rax, rax
+    
+loop:
+    mov al, byte ptr [rdi]
+    mov bl, byte ptr [rsi]
+    
+    cmp al, bl
+    jne diff
+    
+    test al, al
+    je equal
+    
+    inc rdi
+    inc rsi
+    jmp loop
+    
+diff:
+    sub rax, rbx
+    ret
+    
+equal:
+    xor rax, rax
+    ret
+    
