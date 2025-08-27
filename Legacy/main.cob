@@ -16,13 +16,13 @@
        FILE SECTION.
 
        FD IN-FILE.
-       01 IN-RECORD             PIC X(15).
+       01 IN-RECORD             PIC X(18).
 
        FD ACC-FILE.
-       01 ACC-RECORD-RAW        PIC X(15).
+       01 ACC-RECORD-RAW        PIC X(18).
 
        FD TMP-FILE.
-       01 TMP-RECORD            PIC X(15).
+       01 TMP-RECORD            PIC X(18).
 
        FD OUT-FILE.
        01 OUT-RECORD            PIC X(80).
@@ -30,13 +30,13 @@
        WORKING-STORAGE SECTION.
        77 IN-ACCOUNT            PIC 9(6).
        77 IN-ACTION             PIC X(3).
-       77 IN-AMOUNT             PIC 9(6)V99.
+       77 IN-AMOUNT             PIC 9(7)V99.
 
        77 ACC-ACCOUNT           PIC 9(6).
        77 ACC-ACTION            PIC X(3).
-       77 ACC-BALANCE           PIC 9(6)V99.
+       77 ACC-BALANCE           PIC 9(7)V99.
 
-       77 TMP-BALANCE           PIC 9(6)V99.
+       77 TMP-BALANCE           PIC 9(7)V99.
        77 MATCH-FOUND           PIC X VALUE "N".
        77 UPDATED               PIC X VALUE "N".
 
@@ -99,10 +99,10 @@
            MOVE ACC-BALANCE TO TMP-BALANCE
            EVALUATE IN-ACTION
                WHEN "DEP"
-                   SUBTRACT IN-AMOUNT FROM TMP-BALANCE
+                   ADD IN-AMOUNT TO TMP-BALANCE
                    MOVE "DEPOSITED MONEY" TO OUT-RECORD
                WHEN "WDR"
-                   ADD IN-AMOUNT TO TMP-BALANCE
+                   SUBTRACT IN-AMOUNT FROM TMP-BALANCE
                    MOVE "WITHDREW MONEY" TO OUT-RECORD
                WHEN "BAL"
                    MOVE SPACES TO OUT-RECORD
@@ -116,20 +116,20 @@
                    MOVE "UNKNOWN ACTION" TO OUT-RECORD
            END-EVALUATE
 
-           MOVE IN-ACCOUNT TO TMP-RECORD(1:5)
-           MOVE IN-ACTION  TO TMP-RECORD(6:3)
+           MOVE IN-ACCOUNT TO TMP-RECORD(1:6)
+           MOVE IN-ACTION  TO TMP-RECORD(7:3)
            MOVE TMP-BALANCE TO FORMATTED-AMOUNT
-           MOVE FORMATTED-AMOUNT TO TMP-RECORD(11:9)
+           MOVE FORMATTED-AMOUNT TO TMP-RECORD(10:9)
 
            WRITE TMP-RECORD
            MOVE "Y" TO UPDATED.
 
        APPEND-ACCOUNT.
            OPEN EXTEND ACC-FILE
-           MOVE IN-ACCOUNT TO ACC-RECORD-RAW(1:5)
-           MOVE IN-ACTION  TO ACC-RECORD-RAW(6:3)
+           MOVE IN-ACCOUNT TO ACC-RECORD-RAW(1:6)
+           MOVE IN-ACTION  TO ACC-RECORD-RAW(7:3)
            MOVE IN-AMOUNT TO FORMATTED-AMOUNT
-           MOVE FORMATTED-AMOUNT TO ACC-RECORD-RAW(11:9)
+           MOVE FORMATTED-AMOUNT TO ACC-RECORD-RAW(10:9)
 
            WRITE ACC-RECORD-RAW
            CLOSE ACC-FILE.
@@ -139,5 +139,6 @@
                CALL "SYSTEM" USING "mv temp.txt accounts.txt"
            END-IF
            OPEN OUTPUT OUT-FILE
+           WRITE OUT-RECORD
            CLOSE OUT-FILE.
 
