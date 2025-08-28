@@ -13,7 +13,7 @@ Why would you write a web server in assembly...
 ![GET HTML](docs/images/get_html.png)
 
 **GET Image**
-![GET Image](docs/images/get_img.png)
+![GET Image](docs/images/get_img.gif)
 
 **GET 404**
 ![GET 404](docs/images/get_404.png)
