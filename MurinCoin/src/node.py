@@ -117,7 +117,7 @@ def add_block():
     # Check hash and PoW
     prefix = f"{block.index}{block.timestamp}{merkle_root(block.data)}{block.previous_hash}"
     hash = sha256((prefix + ":" + str(nonce)).encode()).hexdigest()
-    if hash != block.hash:
+    if hash != block.hash or not hash.startswith('0' * 4):
         return f'Invalid hash or nonce\n{hash}\nvs.\n{block.hash}', 400
         
     # Block is valid
@@ -284,7 +284,8 @@ if __name__ == '__main__':
     
     addresses = set()
     addresses = set() if args.port == 5000 else discover()
-    if not args.no_sync:
+    
+    if not args.no_sync and args.port != 5000:
         sync()
     
     # DEBUG
