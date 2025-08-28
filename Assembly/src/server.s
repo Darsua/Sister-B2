@@ -49,22 +49,22 @@ sockaddr:
 
 # --- HTTP RESPONSES ---
 http_header_html: .asciz "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\n\r\n"
-http_header_html_len = . - http_header_html
+http_header_html_len = . - http_header_html - 1
 
 http_header_download: .asciz "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Disposition: attachment\r\n\r\n"
-http_header_download_len = . - http_header_download
+http_header_download_len = . - http_header_download - 1
 
 method_not_allowed_header: .asciz "HTTP/1.1 405 Method Not Allowed\r\nContent-Type: text/html\r\n\r\n"
-method_not_allowed_header_len = . - method_not_allowed_header
+method_not_allowed_header_len = . - method_not_allowed_header - 1
 
 file_not_found_header: .asciz "HTTP/1.1 404 Not Found\r\nContent-Type: text/html\r\n\r\n"
-file_not_found_header_len = . - file_not_found_header
+file_not_found_header_len = . - file_not_found_header - 1
 
 internal_server_error_header: .asciz "HTTP/1.1 500 Internal Server Error\r\nContent-Type: text/html\r\n\r\n"
-internal_server_error_header_len = . - internal_server_error_header
+internal_server_error_header_len = . - internal_server_error_header - 1
 
 bad_request_header: .asciz "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html\r\n\r\n"
-bad_request_header_len = . - bad_request_header
+bad_request_header_len = . - bad_request_header - 1
 
 
 # --- HTTP METHODS ---
@@ -267,6 +267,7 @@ handle_method:
     # Else, method not supported
     jmp method_not_supported
 
+    
 # --- PARSE REQUEST BODY ---
 read_body:
     # Body starts after double CRLF (0x0D 0x0A 0x0D 0x0A)
@@ -308,6 +309,7 @@ body_not_found:
     mov rax, -1 # Failure
     ret
 
+    
 # --- HANDLE GET REQUEST ---
 handle_get:
     # Open file to read
