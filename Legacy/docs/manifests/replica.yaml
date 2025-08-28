@@ -1,0 +1,116 @@
+kind: ReplicaSet
+apiVersion: apps/v1
+metadata:
+  name: legacy-65dcff4cfb
+  namespace: default
+  uid: 564e4cc7-6c76-4a49-9ae7-7f58a04af37c
+  resourceVersion: '1212'
+  generation: 2
+  creationTimestamp: '2025-08-28T11:18:40Z'
+  labels:
+    app: legacy
+    pod-template-hash: 65dcff4cfb
+  annotations:
+    deployment.kubernetes.io/desired-replicas: '1'
+    deployment.kubernetes.io/max-replicas: '2'
+    deployment.kubernetes.io/revision: '3'
+  ownerReferences:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: legacy
+      uid: 759e120a-17d2-4948-a4ae-dd09cff74b7c
+      controller: true
+      blockOwnerDeletion: true
+  managedFields:
+    - manager: kube-controller-manager
+      operation: Update
+      apiVersion: apps/v1
+      time: '2025-08-28T11:18:40Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:metadata:
+          f:annotations:
+            .: {}
+            f:deployment.kubernetes.io/desired-replicas: {}
+            f:deployment.kubernetes.io/max-replicas: {}
+            f:deployment.kubernetes.io/revision: {}
+          f:labels:
+            .: {}
+            f:app: {}
+            f:pod-template-hash: {}
+          f:ownerReferences:
+            .: {}
+            k:{"uid":"759e120a-17d2-4948-a4ae-dd09cff74b7c"}: {}
+        f:spec:
+          f:replicas: {}
+          f:selector: {}
+          f:template:
+            f:metadata:
+              f:annotations:
+                .: {}
+                f:kubectl.kubernetes.io/restartedAt: {}
+              f:labels:
+                .: {}
+                f:app: {}
+                f:pod-template-hash: {}
+            f:spec:
+              f:containers:
+                k:{"name":"legacy-cobol"}:
+                  .: {}
+                  f:image: {}
+                  f:imagePullPolicy: {}
+                  f:name: {}
+                  f:resources: {}
+                  f:terminationMessagePath: {}
+                  f:terminationMessagePolicy: {}
+              f:dnsPolicy: {}
+              f:restartPolicy: {}
+              f:schedulerName: {}
+              f:securityContext: {}
+              f:terminationGracePeriodSeconds: {}
+    - manager: kube-controller-manager
+      operation: Update
+      apiVersion: apps/v1
+      time: '2025-08-28T11:19:04Z'
+      fieldsType: FieldsV1
+      fieldsV1:
+        f:status:
+          f:availableReplicas: {}
+          f:fullyLabeledReplicas: {}
+          f:observedGeneration: {}
+          f:readyReplicas: {}
+          f:replicas: {}
+      subresource: status
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: legacy
+      pod-template-hash: 65dcff4cfb
+  template:
+    metadata:
+      creationTimestamp: null
+      labels:
+        app: legacy
+        pod-template-hash: 65dcff4cfb
+      annotations:
+        kubectl.kubernetes.io/restartedAt: '2025-08-28T11:17:12Z'
+    spec:
+      containers:
+        - name: legacy-cobol
+          image: darsua/legacy-cobol
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          imagePullPolicy: Always
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
+      securityContext: {}
+      schedulerName: default-scheduler
+status:
+  replicas: 1
+  fullyLabeledReplicas: 1
+  readyReplicas: 1
+  availableReplicas: 1
+  observedGeneration: 2

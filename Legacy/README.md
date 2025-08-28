@@ -1,15 +1,11 @@
-# COBOL + FastAPI Debug Task
+# COBOLstone Ahh
 
-Your task:
-1. Fix `main.cob` so it works correctly.
-2. Fix `Dockerfile` so the app runs end-to-end.
+Docker is so finicky man...
 
-Rules:
-- **Do NOT modify** `app.py` or `index.html`.
-- You can change anything in `main.cob` and `Dockerfile`.
-- Input/output files (`input.txt`, `output.txt`, `accounts.txt`) are provided.
-
-How to test:
-```bash
-docker build -t cobol-app .
-docker run --rm -p 8000:8000 cobol-app
+| Bonus         | Status                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Conversion    | ❌ I don't get it. When do i do the conversion?                                                                                                                                                                                                                                                                                                                                                   |
+| Kubernetes    | ✅ Using minikube (I don't know if this counts)<br/>Literally just https://minikube.sigs.k8s.io/docs/start/                                                                                                                                                                                                                                                                                       |
+| Interest      | ✅ Using a background task in bash command via Dockerfile and implemented --apply-interest argument in COBOL<br/>`while true; do ./main --apply-interest; sleep 23; done & uvicorn app:app --host 0.0.0.0 --port 8000 & wait` <br/>Using this, it serves the main uvicorn app while running ./main --apply-interest every 23 seconds.<br/>As for the COBOL, go check the git diff ¯\\\_(ツ)_/¯     |
+| Reverse Proxy | ✅ Port forward from Kubernetes then to internet using ngrok.![](docs/images/kubectl.png)![](docs/images/ngrok.png)![](docs/images/deploy.png) |
+| Domain        | ✅ ngrok provides a free domain that serves HTTPS.![](docs/images/domain.png)                                                                                                                                                                                                                                    |
