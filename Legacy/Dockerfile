@@ -15,4 +15,4 @@ RUN cobc -x main.cob -o main
 
 EXPOSE 8000
 
-CMD ["bash", "-c", "while true; do ./main sleep 23; --apply-interest; done & uvicorn app:app --host 0.0.0.0 --port 8000 & wait"]
+CMD bash -c 'while true; do ./main --apply-interest; sleep 23; done & uvicorn app:app --host 0.0.0.0 --port 8000 & wait'
